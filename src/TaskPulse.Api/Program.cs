@@ -1,6 +1,11 @@
+using System.Security.Claims;
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-
+using Microsoft.IdentityModel.Tokens;
+using TaskPulse.Api.Common.Options;
 using TaskPulse.Api.Data;
+using TaskPulse.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,6 +16,39 @@ builder.Services.AddOpenApi();
 builder.Services.AddDbContext<TaskPulseDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+// Configuration options
+builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
+
+// Custom services
+builder.Services.AddScoped<ITokenService, TokenService>();
+builder.Services.AddSingleton<IPasswordHasher, PasswordHasher>();
+
+// Authentication & Authorization
+var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
+    ?? throw new InvalidOperationException("Jwt configuration section is missing.");
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = jwtOptions.Issuer,
+        ValidAudience = jwtOptions.Audience,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.SecretKey)),
+        ClockSkew = TimeSpan.Zero
+    };
+});
+
+builder.Services.AddAuthorization();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -20,6 +58,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 var summaries = new[]
 {
@@ -38,7 +79,18 @@ app.MapGet("/weatherforecast", () =>
         .ToArray();
     return forecast;
 })
-.WithName("GetWeatherForecast");
+.WithName("GetWeatherForecast")
+.RequireAuthorization();
+
+app.MapGet("/api/me", (ClaimsPrincipal user) => Results.Ok(new
+{
+    Id = user.FindFirstValue(ClaimTypes.NameIdentifier),
+    Email = user.FindFirstValue(ClaimTypes.Email),
+    Name = user.FindFirstValue(ClaimTypes.Name),
+    Role = user.FindFirstValue(ClaimTypes.Role)
+}))
+.WithName("GetCurrentUser")
+.RequireAuthorization();
 
 app.Run();
 

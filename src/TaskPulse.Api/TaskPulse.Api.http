@@ -1,6 +1,22 @@
 @TaskPulse.Api_HostAddress = http://localhost:5027
+@authToken = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
+### Petición sin token (debería retornar 401 Unauthorized)
 GET {{TaskPulse.Api_HostAddress}}/weatherforecast/
 Accept: application/json
+
+###
+
+### Petición con token JWT en el header Authorization
+GET {{TaskPulse.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+Authorization: Bearer {{authToken}}
+
+###
+
+### Obtener datos del usuario autenticado a partir de sus claims
+GET {{TaskPulse.Api_HostAddress}}/api/me
+Accept: application/json
+Authorization: Bearer {{authToken}}
 
 ###
